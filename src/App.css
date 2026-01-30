@@ -1,0 +1,15 @@
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Arial", sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Tailwind v4 handles most styles, these are just overrides */
+audio::-webkit-media-controls-panel {
+  background-color: rgba(255, 255, 255, 0.1);
+}
