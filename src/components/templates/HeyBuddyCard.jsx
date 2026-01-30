@@ -14,6 +14,10 @@ function HeyBuddyCard({
     colors,
     isRecording,
     recordingUrl,
+    isTranscribing,
+    isModelLoading,
+    transcript,
+    transcriptionProgress,
 }) {
     return (
         <Card className="max-w-[640px] mx-auto p-4 border-gray-600 rounded-2xl bg-[#101623] text-white">
@@ -58,7 +62,14 @@ function HeyBuddyCard({
                 </section>
 
                 {/* Recording Section */}
-                <RecordingDisplay isRecording={isRecording} recordingUrl={recordingUrl} />
+                <RecordingDisplay
+                    isRecording={isRecording}
+                    recordingUrl={recordingUrl}
+                    isTranscribing={isTranscribing}
+                    isModelLoading={isModelLoading}
+                    transcript={transcript}
+                    progress={transcriptionProgress}
+                />
             </CardContent>
         </Card>
     );

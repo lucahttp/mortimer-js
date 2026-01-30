@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useHeyBuddy } from '@/hooks/useHeyBuddy';
+import { useTranscriber } from '@/hooks/useTranscriber';
 import { useMultiLineVisualization, useAudioVisualization } from '@/hooks/useAudioVisualization';
 import { HeyBuddyCard } from '@/components/templates/HeyBuddyCard';
 import { PermissionPrompt } from '@/components/molecules/PermissionPrompt';
@@ -31,6 +32,23 @@ const heyBuddyOptions = {
 function App() {
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(true);
 
+  // Transcription hook
+  const {
+    transcript,
+    isTranscribing,
+    isModelLoading,
+    progress: transcriptionProgress,
+    transcribe,
+    clear: clearTranscript,
+  } = useTranscriber();
+
+  // Handle recording complete - start transcription
+  const handleRecordingComplete = useCallback((audioSamples) => {
+    console.log('Recording complete, starting transcription...', audioSamples.length, 'samples');
+    clearTranscript();
+    transcribe(audioSamples);
+  }, [transcribe, clearTranscript]);
+
   const {
     isInitialized,
     isRecording,
@@ -43,7 +61,7 @@ function App() {
     start,
     stop,
     requestMicrophonePermission,
-  } = useHeyBuddy(heyBuddyOptions);
+  } = useHeyBuddy(heyBuddyOptions, handleRecordingComplete);
 
   // Canvas refs
   const wakeWordCanvasRef = useRef(null);
@@ -159,6 +177,10 @@ function App() {
         colors={COLORS}
         isRecording={isRecording}
         recordingUrl={recording}
+        isTranscribing={isTranscribing}
+        isModelLoading={isModelLoading}
+        transcript={transcript}
+        transcriptionProgress={transcriptionProgress}
       />
     </div>
   );

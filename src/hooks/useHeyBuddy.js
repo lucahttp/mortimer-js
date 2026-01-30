@@ -9,6 +9,7 @@ const initialState = {
     speechProbability: 0,
     wakeWords: {},
     recording: null,
+    rawAudioSamples: null,
     frameTimeEma: 0,
     permissionStatus: 'prompt', // 'prompt' | 'granted' | 'denied'
     error: null,
@@ -59,10 +60,18 @@ function samplesToBlob(audioSamples, sampleRate = 16000, numChannels = 1) {
 
 /**
  * Custom hook for HeyBuddy wake word detection
+ * @param {Object} options - HeyBuddy configuration options
+ * @param {Function} onRecordingComplete - Callback with raw audio samples when recording ends
  */
-export function useHeyBuddy(options = {}) {
+export function useHeyBuddy(options = {}, onRecordingComplete = null) {
     const [state, setState] = useState(initialState);
     const heyBuddyRef = useRef(null);
+    const onRecordingCompleteRef = useRef(onRecordingComplete);
+
+    // Keep callback ref updated
+    useEffect(() => {
+        onRecordingCompleteRef.current = onRecordingComplete;
+    }, [onRecordingComplete]);
 
     const updateState = useCallback((updates) => {
         setState((prev) => ({ ...prev, ...updates }));
@@ -116,9 +125,20 @@ export function useHeyBuddy(options = {}) {
         });
 
         heyBuddy.onRecording((audioSamples) => {
+            // Create blob URL for playback
             const blob = samplesToBlob(audioSamples);
             const url = URL.createObjectURL(blob);
-            updateState({ recording: url });
+
+            // Store raw samples for transcription
+            updateState({
+                recording: url,
+                rawAudioSamples: audioSamples,
+            });
+
+            // Call transcription callback if provided
+            if (onRecordingCompleteRef.current) {
+                onRecordingCompleteRef.current(audioSamples);
+            }
         });
 
         // Cleanup
