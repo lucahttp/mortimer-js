@@ -39,8 +39,9 @@ jobs:
       
       - name: Install Dependencies
         run: npm install
-        # Note: postinstall script automatically runs download-models.js
-        # This downloads large ONNX files from Hugging Face
+      
+      - name: Download Supertonic TTS Models
+        run: node scripts/download-models.js
       
       - name: Build
         run: npm run build
