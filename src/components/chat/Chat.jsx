@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { MathJaxContext, MathJax } from "better-react-mathjax";
@@ -15,35 +15,17 @@ function render(text) {
     return result;
 }
 
-function Message({ role, content }) {
+function Message({ role, content, thought }) {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Parse for <think> block
-    let thought = null;
-    let answer = content;
-
-    if (role === 'assistant') {
-        const thinkStart = content.indexOf('<think>');
-        if (thinkStart !== -1) {
-            const thinkEnd = content.indexOf('</think>');
-            if (thinkEnd !== -1) {
-                // Completed thought
-                thought = content.substring(thinkStart + 7, thinkEnd);
-                answer = content.substring(thinkEnd + 8);
-            } else {
-                // Still thinking
-                thought = content.substring(thinkStart + 7);
-                answer = "";
-            }
+    // Auto-expand when thought starts
+    useEffect(() => {
+        if (thought && thought.length > 0) {
+            setIsExpanded(true);
         }
-    }
+    }, [!!thought]);
 
-    // Auto-expand if thinking and no answer yet
-    if (thought && !answer && !isExpanded) {
-        setIsExpanded(true);
-    }
-
-    const isThinking = thought && !answer;
+    const isThinking = thought && thought.length > 0 && (!content || content.length === 0);
 
     if (role === "user") {
         return (
@@ -59,7 +41,7 @@ function Message({ role, content }) {
         <div className="space-y-6">
 
             {/* Thinking Block */}
-            {thought && (
+            {thought && thought.length > 0 && (
                 <div className="rounded-sm border border-zinc-800 bg-zinc-900/30 p-4">
                     <div className="flex items-center justify-between mb-3">
                         <button
@@ -94,19 +76,19 @@ function Message({ role, content }) {
             )}
 
             {/* Answer Block */}
-            {(answer.length > 0 || !thought) && (
+            {(content.length > 0 || !thought) && (
                 <div className="text-base text-zinc-300 leading-relaxed font-sans">
                     <MathJax dynamic>
                         <span
                             className="markdown prose prose-invert prose-zinc max-w-none"
                             dangerouslySetInnerHTML={{
-                                __html: render(answer),
+                                __html: render(content),
                             }}
                         />
                     </MathJax>
 
                     {/* Fallback loading indicator if no thought and no answer yet */}
-                    {!thought && !answer && (
+                    {!thought && !content && (
                         <div className="flex gap-1 h-4 items-center">
                             <div className="w-1 bg-yellow-500 animate-[wave_0.5s_infinite]"></div>
                             <div className="w-1 bg-yellow-500 animate-[wave_0.8s_infinite]"></div>

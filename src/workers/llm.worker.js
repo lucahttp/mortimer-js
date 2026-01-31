@@ -48,14 +48,30 @@ async function generate({ messages }) {
         return_dict: true,
     });
 
+    const [START_THINKING_TOKEN_ID, END_THINKING_TOKEN_ID] = tokenizer.encode(
+        "<think></think>",
+        { add_special_tokens: false },
+    );
+
+    let state = "answering";
     let startTime = null;
     let numTokens = 0;
     let tps = 0;
 
-    const tokenCallback = () => {
+    const tokenCallback = (tokens) => {
         startTime ??= performance.now();
         if (numTokens++ > 0) {
             tps = (numTokens / (performance.now() - startTime)) * 1000;
+        }
+
+        // Check for state transitions
+        switch (Number(tokens[0])) {
+            case START_THINKING_TOKEN_ID:
+                state = "thinking";
+                break;
+            case END_THINKING_TOKEN_ID:
+                state = "answering";
+                break;
         }
     };
 
@@ -65,6 +81,7 @@ async function generate({ messages }) {
             output,
             tps,
             numTokens,
+            state,
         });
     };
 
@@ -85,7 +102,7 @@ async function generate({ messages }) {
             do_sample: true,
             top_k: 20,
             temperature: 0.7,
-            max_new_tokens: 1024,
+            max_new_tokens: 2048, // Increased for reasoning
             streamer,
             stopping_criteria: stoppingCriteria,
             return_dict_in_generate: true,
@@ -98,7 +115,7 @@ async function generate({ messages }) {
             skip_special_tokens: true,
         });
 
-        // Send complete result
+        // Send complete result - note: we don't need 'state' here as it's the final blob
         self.postMessage({
             status: "complete",
             output: decoded[0],

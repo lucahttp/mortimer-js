@@ -10,6 +10,9 @@ export function useLLM() {
 
     // Current streaming state
     const [isGenerating, setIsGenerating] = useState(false);
+    // Use ref for immediate synchronous locking to prevent race conditions
+    const isGeneratingRef = useRef(false);
+
     const [isModelLoading, setIsModelLoading] = useState(false);
     const [isModelReady, setIsModelReady] = useState(false);
     const [progress, setProgress] = useState([]);
@@ -19,6 +22,11 @@ export function useLLM() {
     const [numTokens, setNumTokens] = useState(null);
 
     const workerRef = useRef(null);
+
+    // Sync ref with state (optional, but good for consistency if external changes happen)
+    useEffect(() => {
+        isGeneratingRef.current = isGenerating;
+    }, [isGenerating]);
 
     // Initialize worker
     useEffect(() => {
@@ -66,12 +74,19 @@ export function useLLM() {
                     break;
 
                 case 'start':
-                    // Add empty assistant message for streaming
-                    setMessages((prev) => [
-                        ...prev,
-                        { role: 'assistant', content: '' },
-                    ]);
+                    setMessages((prev) => {
+                        // Defensive check: If last message is already an empty assistant placeholder, don't add another one
+                        const last = prev.at(-1);
+                        if (last && last.role === 'assistant' && !last.content && !last.thought) {
+                            return prev;
+                        }
+                        return [
+                            ...prev,
+                            { role: 'assistant', content: '', thought: '' },
+                        ];
+                    });
                     setIsGenerating(true);
+                    isGeneratingRef.current = true;
                     break;
 
                 case 'update':
@@ -80,10 +95,15 @@ export function useLLM() {
                     setNumTokens(message.numTokens);
                     setMessages((prev) => {
                         const cloned = [...prev];
-                        const last = cloned.at(-1);
-                        cloned[cloned.length - 1] = {
+                        const lastIndex = cloned.length - 1;
+                        const last = cloned[lastIndex];
+
+                        const isThinking = message.state === 'thinking';
+
+                        cloned[lastIndex] = {
                             ...last,
-                            content: last.content + message.output,
+                            thought: isThinking ? (last.thought || '') + message.output : (last.thought || ''),
+                            content: !isThinking ? (last.content || '') + message.output : (last.content || ''),
                         };
                         return cloned;
                     });
@@ -93,11 +113,13 @@ export function useLLM() {
                     setTps(message.tps);
                     setNumTokens(message.numTokens);
                     setIsGenerating(false);
+                    isGeneratingRef.current = false;
                     break;
 
                 case 'error':
                     setError(message.data?.message || 'Unknown error');
                     setIsGenerating(false);
+                    isGeneratingRef.current = false;
                     break;
             }
         };
@@ -121,7 +143,11 @@ export function useLLM() {
      * Send a user message and generate response
      */
     const sendMessage = useCallback((content) => {
-        if (!workerRef.current || isGenerating) return;
+        if (!workerRef.current || isGeneratingRef.current) return;
+
+        // Optimistically set generating to true to prevent double-submission
+        isGeneratingRef.current = true;
+        setIsGenerating(true);
 
         // Add user message
         const userMessage = { role: 'user', content };
@@ -144,7 +170,7 @@ export function useLLM() {
 
         setError(null);
         setTps(null);
-    }, [isGenerating]);
+    }, []);
 
     /**
      * Interrupt current generation
