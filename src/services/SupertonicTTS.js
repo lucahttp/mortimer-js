@@ -327,8 +327,12 @@ export class SupertonicTTS {
         voiceId = voiceId || this.currentVoice;
         const embeddings = await this.loadVoiceEmbedding(voiceId);
 
-        // Clean text (remove <think> tags etc.)
-        const cleanText = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        // Clean text - remove <think> tags and their content, plus any stray tags
+        let cleanText = text
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')  // Full think blocks
+            .replace(/<\/?think>/gi, '')                 // Stray opening or closing tags
+            .trim();
+
         if (!cleanText) {
             throw new Error("No text to synthesize");
         }
