@@ -196,9 +196,20 @@ function App() {
     if (transcript?.text && !transcript.isBusy && !isGenerating) {
       if (processedTextRef.current === transcript.text) return;
 
-      console.log('Transcription complete, sending to LLM:', transcript.text);
-      processedTextRef.current = transcript.text;
-      sendMessage(transcript.text);
+      // Remove wake words from the beginning of the transcript
+      let cleanedText = transcript.text;
+      for (const wakeWord of WAKE_WORDS) {
+        // Create regex to match wake word at start (case insensitive, with optional punctuation/comma after)
+        const regex = new RegExp(`^\\s*${wakeWord}[,\\s]*`, 'i');
+        cleanedText = cleanedText.replace(regex, '').trim();
+      }
+
+      // Only send if there's actual content after removing wake word
+      if (cleanedText) {
+        console.log('Transcription complete, sending to LLM:', cleanedText);
+        processedTextRef.current = transcript.text;
+        sendMessage(cleanedText);
+      }
       clearTranscript();
     }
   }, [transcript, isGenerating, sendMessage, clearTranscript]);
