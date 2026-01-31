@@ -15,9 +15,14 @@ function HeyBuddyCard({
     isRecording,
     recordingUrl,
     isTranscribing,
-    isModelLoading,
+    isTranscriberLoading,
     transcript,
     transcriptionProgress,
+    isGenerating,
+    isLLMLoading,
+    llmResponse,
+    llmProgress,
+    llmLoadingStatus,
 }) {
     return (
         <Card className="max-w-[640px] mx-auto p-4 border-gray-600 rounded-2xl bg-[#101623] text-white">
@@ -36,7 +41,7 @@ function HeyBuddyCard({
                         Using a wake-word as a gating mechanism for voice-enabled web applications carries numerous benefits, including reduced power consumption, improved privacy, and enhanced performance in noisy environments over speech-to-text systems.
                     </p>
                     <p className="mb-0 mt-1">
-                        This space serves as a demonstration of the JavaScript library for front-end applications. Say something like, <em className="text-cyan-400">"Hey buddy, how are you?"</em> to see the wake word and voice activity detection in action. Your voice command will be isolated as an audio clip, which is then ready to be sent to your application's backend for further processing.
+                        This space serves as a demonstration of the JavaScript library for front-end applications. Say something like, <em className="text-cyan-400">"Hey buddy, what is 2 + 2?"</em> to see the wake word, transcription, and AI response in action.
                     </p>
                 </section>
 
@@ -66,9 +71,14 @@ function HeyBuddyCard({
                     isRecording={isRecording}
                     recordingUrl={recordingUrl}
                     isTranscribing={isTranscribing}
-                    isModelLoading={isModelLoading}
+                    isModelLoading={isTranscriberLoading}
                     transcript={transcript}
                     progress={transcriptionProgress}
+                    isGenerating={isGenerating}
+                    isLLMLoading={isLLMLoading}
+                    llmResponse={llmResponse}
+                    llmProgress={llmProgress}
+                    llmLoadingStatus={llmLoadingStatus}
                 />
             </CardContent>
         </Card>

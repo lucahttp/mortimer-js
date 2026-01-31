@@ -98,6 +98,7 @@ export class HeyBuddy {
 
         // Initialize state
         this.recording = false;
+        this.paused = false;
         this.audioBuffer = null;
         this.frameIntervalEma = 0;
         this.frameIntervalEmaWeight = 0.1;
@@ -125,6 +126,14 @@ export class HeyBuddy {
 
     stop() {
         this.batcher.destroy();
+    }
+
+    pause() {
+        this.paused = true;
+    }
+
+    resume() {
+        this.paused = false;
     }
 
     get chunkedWakeWords() {
@@ -252,6 +261,11 @@ export class HeyBuddy {
     }
 
     async process(audio) {
+        // Skip processing when paused
+        if (this.paused) {
+            return;
+        }
+
         this.frameStart = new Date().getTime();
 
         if (this.frameEnd !== undefined && this.frameEnd !== null) {

@@ -107,6 +107,18 @@ export function useHeyBuddy(options = {}, onRecordingComplete = null) {
         }
     }, [updateState]);
 
+    const pause = useCallback(() => {
+        if (heyBuddyRef.current) {
+            heyBuddyRef.current.pause();
+        }
+    }, []);
+
+    const resume = useCallback(() => {
+        if (heyBuddyRef.current) {
+            heyBuddyRef.current.resume();
+        }
+    }, []);
+
     useEffect(() => {
         // Initialize HeyBuddy instance
         const heyBuddy = new HeyBuddy(options);
@@ -151,6 +163,8 @@ export function useHeyBuddy(options = {}, onRecordingComplete = null) {
         ...state,
         start,
         stop,
+        pause,
+        resume,
         requestMicrophonePermission,
     };
 }

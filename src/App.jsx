@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useHeyBuddy } from '@/hooks/useHeyBuddy';
 import { useTranscriber } from '@/hooks/useTranscriber';
+import { useLLM } from '@/hooks/useLLM';
 import { useMultiLineVisualization, useAudioVisualization } from '@/hooks/useAudioVisualization';
 import { HeyBuddyCard } from '@/components/templates/HeyBuddyCard';
 import { PermissionPrompt } from '@/components/molecules/PermissionPrompt';
@@ -36,19 +37,32 @@ function App() {
   const {
     transcript,
     isTranscribing,
-    isModelLoading,
+    isModelLoading: isTranscriberLoading,
     progress: transcriptionProgress,
     transcribe,
     clear: clearTranscript,
   } = useTranscriber();
 
+  // LLM hook
+  const {
+    response: llmResponse,
+    isGenerating,
+    isModelLoading: isLLMLoading,
+    progress: llmProgress,
+    loadingStatus: llmLoadingStatus,
+    generate,
+    clear: clearLLM,
+  } = useLLM();
+
   // Handle recording complete - start transcription
   const handleRecordingComplete = useCallback((audioSamples) => {
     console.log('Recording complete, starting transcription...', audioSamples.length, 'samples');
     clearTranscript();
+    clearLLM();
     transcribe(audioSamples);
-  }, [transcribe, clearTranscript]);
+  }, [transcribe, clearTranscript, clearLLM]);
 
+  // Hey Buddy hook - must be called before effects that use pause/resume
   const {
     isInitialized,
     isRecording,
@@ -60,8 +74,34 @@ function App() {
     permissionStatus,
     start,
     stop,
+    pause,
+    resume,
     requestMicrophonePermission,
   } = useHeyBuddy(heyBuddyOptions, handleRecordingComplete);
+
+  // Pause listening when transcription or generation starts
+  useEffect(() => {
+    if (isTranscribing || isGenerating) {
+      console.log('Pausing wake word detection during processing');
+      pause();
+    }
+  }, [isTranscribing, isGenerating, pause]);
+
+  // When transcription completes, generate LLM response
+  useEffect(() => {
+    if (transcript?.text && !transcript.isBusy && !isGenerating) {
+      console.log('Transcription complete, generating response for:', transcript.text);
+      generate(transcript.text);
+    }
+  }, [transcript, isGenerating, generate]);
+
+  // Resume listening when LLM response is complete
+  useEffect(() => {
+    if (llmResponse?.complete) {
+      console.log('LLM response complete, resuming listening');
+      resume();
+    }
+  }, [llmResponse?.complete, resume]);
 
   // Canvas refs
   const wakeWordCanvasRef = useRef(null);
@@ -178,9 +218,14 @@ function App() {
         isRecording={isRecording}
         recordingUrl={recording}
         isTranscribing={isTranscribing}
-        isModelLoading={isModelLoading}
+        isTranscriberLoading={isTranscriberLoading}
         transcript={transcript}
         transcriptionProgress={transcriptionProgress}
+        isGenerating={isGenerating}
+        isLLMLoading={isLLMLoading}
+        llmResponse={llmResponse}
+        llmProgress={llmProgress}
+        llmLoadingStatus={llmLoadingStatus}
       />
     </div>
   );
