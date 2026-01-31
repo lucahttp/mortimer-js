@@ -28,7 +28,7 @@ export function useSupertonicTTS(enabled = true) {
 
             ttsRef.current = new SupertonicTTS({
                 debug: true,
-                basePath: '/supertonic',
+                basePath: `${import.meta.env.BASE_URL}supertonic`,
             });
 
             // Set up callbacks
