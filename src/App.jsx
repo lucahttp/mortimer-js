@@ -170,15 +170,30 @@ function App() {
     }
   }, [isTranscribing, isGenerating, pause]);
 
+  const processedTextRef = useRef('');
+
   // When transcription completes, send message to LLM
   useEffect(() => {
     if (transcript?.text && !transcript.isBusy && !isGenerating) {
+      // Prevent duplicate sends for the exact same text
+      if (processedTextRef.current === transcript.text) return;
+
       console.log('Transcription complete, sending to LLM:', transcript.text);
+      processedTextRef.current = transcript.text;
       sendMessage(transcript.text);
-      // Clear transcript to prevent re-sending it in a loop
+      // Clear transcript to prevent re-sending it in a loop (and allow new identical text later if needed)
+      // Note: We might need to reset processedTextRef if we want to allow saying "Hello" twice in a row.
+      // But clearing transcript usually suffices.
       clearTranscript();
     }
   }, [transcript, isGenerating, sendMessage, clearTranscript]);
+
+  // Reset processed text when transcript is cleared (optional, but good for safety)
+  useEffect(() => {
+    if (!transcript?.text) {
+      processedTextRef.current = '';
+    }
+  }, [transcript]);
 
   // Resume listening when LLM response is complete
   // Resume listening completely when LLM response is complete

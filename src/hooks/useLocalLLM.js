@@ -142,23 +142,23 @@ export function useLocalLLM({ systemPrompt, reasoningEnabled } = {}) {
         }
 
         const userMessage = { role: 'user', content };
-        setMessages((prev) => {
-            const updatedMessages = [...prev, userMessage];
-            workerRef.current.postMessage({
-                type: 'generate',
-                data: {
-                    messages: [
-                        { role: 'system', content: finalSystemPrompt },
-                        ...updatedMessages.filter(m => m.content.length > 0),
-                    ],
-                },
-            });
-            return updatedMessages;
+        const updatedMessages = [...messages, userMessage];
+
+        setMessages(updatedMessages);
+
+        workerRef.current.postMessage({
+            type: 'generate',
+            data: {
+                messages: [
+                    { role: 'system', content: finalSystemPrompt },
+                    ...updatedMessages.filter(m => m.content.length > 0),
+                ],
+            },
         });
 
         setError(null);
         setTps(null);
-    }, [systemPrompt, reasoningEnabled]);
+    }, [messages, systemPrompt, reasoningEnabled]);
 
     const interrupt = useCallback(() => {
         if (!workerRef.current) return;
