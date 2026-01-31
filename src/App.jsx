@@ -99,24 +99,24 @@ function App() {
   // Browser TTS Hook
   const { speak: browserSpeak, cancel: cancelBrowserTTS, isSpeaking: isBrowserSpeaking } = useTTS();
 
-  // Supertonic TTS Hook (Local/ONNX)
+  // Supertonic TTS Hook (Local/ONNX) - streaming enabled
   const {
-    speak: supertonicSpeak,
+    speakStreaming: supertonicSpeak,
     stop: stopSupertonic,
     isSpeaking: isSupertonicSpeaking,
     isLoaded: isSupertonicLoaded,
     error: supertonicError
-  } = useSupertonicTTS({
-    enabled: ttsEnabled && ttsProvider === 'supertonic',
-    language: language
-  });
+  } = useSupertonicTTS(ttsEnabled && ttsProvider === 'supertonic');
 
   // United Speak Function
   const speak = useCallback((text) => {
     if (!ttsEnabled) return;
 
     if (ttsProvider === 'supertonic') {
-      supertonicSpeak(text);
+      // Use streaming for faster audio start
+      supertonicSpeak(text, (chunk, total) => {
+        console.log(`[TTS] Chunk ${chunk}/${total}`);
+      });
     } else {
       browserSpeak(text);
     }

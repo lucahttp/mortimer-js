@@ -440,4 +440,104 @@ export class SupertonicTTS {
             return false;
         }
     }
+
+    /**
+     * Split text into chunks for streaming generation
+     * @param {string} text - Text to split
+     * @param {number} maxLen - Maximum chunk length (default 250)
+     * @returns {string[]} Array of text chunks
+     */
+    chunkText(text, maxLen = 250) {
+        // Split by paragraph (two or more newlines)
+        const paragraphs = text.trim().split(/\n\s*\n+/).filter(p => p.trim());
+
+        const chunks = [];
+
+        for (let paragraph of paragraphs) {
+            paragraph = paragraph.trim();
+            if (!paragraph) continue;
+
+            // Split by sentence boundaries (., !, ? followed by space)
+            // Exclude common abbreviations
+            const sentences = paragraph.split(/(?<!Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.|etc\.|e\.g\.|i\.e\.)(?<=[.!?])\s+/);
+
+            let currentChunk = "";
+
+            for (let sentence of sentences) {
+                if (currentChunk.length + sentence.length + 1 <= maxLen) {
+                    currentChunk += (currentChunk ? " " : "") + sentence;
+                } else {
+                    if (currentChunk) {
+                        chunks.push(currentChunk.trim());
+                    }
+                    currentChunk = sentence;
+                }
+            }
+
+            if (currentChunk) {
+                chunks.push(currentChunk.trim());
+            }
+        }
+
+        // Handle case where no chunks were created (single short text)
+        if (chunks.length === 0 && text.trim()) {
+            chunks.push(text.trim());
+        }
+
+        return chunks;
+    }
+
+    /**
+     * Generate speech with streaming - calls onChunkReady for each chunk
+     * @param {string} text - Full text to synthesize
+     * @param {string} voiceId - Voice to use
+     * @param {Function} onChunkReady - Callback (audio, sampleRate, chunkIndex, totalChunks, chunkDuration)
+     * @returns {Promise<{totalDuration: number, chunks: number}>}
+     */
+    async generateStreaming(text, voiceId = null, onChunkReady) {
+        if (!this.modelsLoaded) {
+            await this.initialize();
+        }
+
+        // Clean text first
+        let cleanText = text
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/<\/?think>/gi, '')
+            .trim();
+
+        if (!cleanText) {
+            throw new Error("No text to synthesize");
+        }
+
+        const chunks = this.chunkText(cleanText);
+        this.log(`Streaming generation: ${chunks.length} chunks`);
+
+        let totalDuration = 0;
+        const silenceDuration = 0.3; // 300ms silence between chunks
+
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            this.log(`Generating chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 40)}..."`);
+
+            try {
+                const { audio, sampleRate } = await this.generate(chunk, voiceId);
+                const chunkDuration = audio.length / sampleRate;
+                totalDuration += chunkDuration;
+
+                if (onChunkReady) {
+                    onChunkReady(audio, sampleRate, i, chunks.length, chunkDuration);
+                }
+
+                // Add silence duration for all but last chunk
+                if (i < chunks.length - 1) {
+                    totalDuration += silenceDuration;
+                }
+            } catch (error) {
+                this.log(`Chunk ${i + 1} failed:`, error.message);
+                // Continue with next chunk instead of failing entirely
+            }
+        }
+
+        return { totalDuration, chunks: chunks.length };
+    }
 }
