@@ -109,11 +109,17 @@ async function generate({ messages }) {
         });
 
         // Cache for next turn
-        pastKeyValuesCache = past_key_values;
+        // pastKeyValuesCache = past_key_values; // DISABLED: Causes context corruption with full history inputs
 
         const decoded = tokenizer.batch_decode(sequences, {
             skip_special_tokens: true,
         });
+
+        // DEBUG: Log inputs and full response
+        console.log("================= LLM DEBUG (Worker) =================");
+        console.log("INPUT MESSAGES:", JSON.stringify(messages, null, 2));
+        console.log("FULL RESPONSE:", decoded[0]);
+        console.log("======================================================");
 
         // Send complete result - note: we don't need 'state' here as it's the final blob
         self.postMessage({
