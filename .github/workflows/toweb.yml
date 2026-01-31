@@ -41,7 +41,7 @@ jobs:
         run: npm install
       
       - name: Download Supertonic TTS Models
-        run: node scripts/download-models.js
+        run: node scripts/download-models.cjs
       
       - name: Build
         run: npm run build
