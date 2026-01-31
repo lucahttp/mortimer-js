@@ -96,7 +96,7 @@ export class AudioBatcher {
         if (this.stream) {
             this.stream.getTracks().forEach((track) => track.stop());
         }
-        if (this.audioContext) {
+        if (this.audioContext && this.audioContext.state !== 'closed') {
             this.audioContext.close();
         }
         this.initialized = false;

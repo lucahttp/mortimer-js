@@ -112,7 +112,7 @@ function RecordingDisplay({
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-emerald-400/60 text-xs uppercase">AI Response:</span>
                                     <span className="text-white/60 text-[10px]">
-                                        {llmResponse.numTokens} tokens • {llmResponse.tps.toFixed(1)} t/s
+                                        {llmResponse.numTokens} tokens • {(llmResponse.tps || 0).toFixed(1)} t/s
                                     </span>
                                 </div>
                                 <div className="text-sm leading-relaxed text-white/90">

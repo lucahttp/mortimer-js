@@ -220,7 +220,7 @@ function App() {
   } : null;
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0b0f19] text-white p-4">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-black text-white p-4">
       <PermissionPrompt
         open={showPermissionPrompt && !isInitialized}
         onAllow={handleAllowMicrophone}
@@ -244,6 +244,7 @@ function App() {
         llmProgress={llmProgress}
         llmLoadingStatus={llmLoadingStatus}
         chatMessages={chatMessages}
+        sendMessage={sendMessage}
       />
     </div>
   );
