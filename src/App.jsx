@@ -1,8 +1,10 @@
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useHeyBuddy } from '@/hooks/useHeyBuddy';
 import { useTranscriber } from '@/hooks/useTranscriber';
 import { useLLM } from '@/hooks/useLLM';
 import { useTTS } from '@/hooks/useTTS';
+import { useSupertonicTTS } from '@/hooks/useSupertonicTTS';
 import { useMultiLineVisualization, useAudioVisualization } from '@/hooks/useAudioVisualization';
 import { HeyBuddyCard } from '@/components/templates/HeyBuddyCard';
 import { PermissionPrompt } from '@/components/molecules/PermissionPrompt';
@@ -49,8 +51,10 @@ function App() {
 
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem('heybuddy_ttsEnabled');
-    return saved !== null ? JSON.parse(saved) : false;
+    return saved !== null ? JSON.parse(saved) : true;
   });
+
+  const [ttsProvider, setTtsProvider] = useState(() => localStorage.getItem('heybuddy_ttsProvider') || 'supertonic');
 
   // LLM Provider State - Persistent
   const [llmProvider, setLlmProvider] = useState(() => localStorage.getItem('heybuddy_llmProvider') || 'local');
@@ -64,6 +68,7 @@ function App() {
   useEffect(() => localStorage.setItem('heybuddy_systemPrompt', systemPrompt), [systemPrompt]);
   useEffect(() => localStorage.setItem('heybuddy_language', language), [language]);
   useEffect(() => localStorage.setItem('heybuddy_ttsEnabled', JSON.stringify(ttsEnabled)), [ttsEnabled]);
+  useEffect(() => localStorage.setItem('heybuddy_ttsProvider', ttsProvider), [ttsProvider]);
   useEffect(() => localStorage.setItem('heybuddy_llmProvider', llmProvider), [llmProvider]);
   useEffect(() => localStorage.setItem('heybuddy_geminiApiKey', geminiApiKey), [geminiApiKey]);
   useEffect(() => localStorage.setItem('heybuddy_geminiModel', geminiModel), [geminiModel]);
@@ -73,20 +78,7 @@ function App() {
     async function fetchModels() {
       if (!geminiApiKey || geminiApiKey.length < 30) return; // Basic length check
       try {
-        const genAI = new GoogleGenerativeAI(geminiApiKey);
-        // Note: client-side listing might require a proxy or specific CORS headers, 
-        // but the SDK handles fetch. let's try.
-        // Actually, currently the JS SDK might not support listModels directly in the client 
-        // without using the REST endpoint manually or if it's node-only.
-        // Wait, GoogleGenerativeAI SDK for web usually encapsulates generation. 
-        // Model listing might be administrative.
-        // Let's check if `getGenerativeModel` is the only way.
-        // Documentation says `listModels` exists in `GoogleGenerativeAI` on the server/node SDK.
-        // For web sdk?
-        // "The Google AI JavaScript SDK does not currently support listing models."
-        // Ah. If that's the case, I should revert to a static list or try a fetch to the REST endpoint.
-        // Endpoint: https://generativelanguage.googleapis.com/v1beta/models?key=API_KEY
-
+        // Note: client-side listing might require a proxy or specific CORS headers
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`);
         const data = await response.json();
         if (data.models) {
@@ -100,13 +92,41 @@ function App() {
       }
     }
 
-    // Debounce slightly
     const timer = setTimeout(fetchModels, 1000);
     return () => clearTimeout(timer);
   }, [geminiApiKey]);
 
-  // TTS Hook
-  const { speak, cancel: cancelTTS, isSpeaking: isTTSSpeaking } = useTTS();
+  // Browser TTS Hook
+  const { speak: browserSpeak, cancel: cancelBrowserTTS, isSpeaking: isBrowserSpeaking } = useTTS();
+
+  // Supertonic TTS Hook (Local/ONNX)
+  const {
+    speak: supertonicSpeak,
+    stop: stopSupertonic,
+    isSpeaking: isSupertonicSpeaking
+  } = useSupertonicTTS({
+    enabled: ttsEnabled && ttsProvider === 'supertonic',
+    language: language
+  });
+
+  // United Speak Function
+  const speak = useCallback((text) => {
+    if (!ttsEnabled) return;
+
+    if (ttsProvider === 'supertonic') {
+      supertonicSpeak(text);
+    } else {
+      browserSpeak(text);
+    }
+  }, [ttsEnabled, ttsProvider, supertonicSpeak, browserSpeak]);
+
+  // United Stop Function
+  const stopAudio = useCallback(() => {
+    cancelBrowserTTS();
+    stopSupertonic();
+  }, [cancelBrowserTTS, stopSupertonic]);
+
+  const isSpeaking = isBrowserSpeaking || isSupertonicSpeaking;
 
   // Transcription hook
   const {
@@ -118,7 +138,7 @@ function App() {
     clear: clearTranscript,
   } = useTranscriber();
 
-  // LLM hook - now with chat support
+  // LLM hook
   const {
     messages: chatMessages,
     lastResponse,
@@ -129,7 +149,6 @@ function App() {
     tps,
     numTokens,
     sendMessage,
-    reset: resetChat,
   } = useLLM({
     provider: llmProvider,
     apiKey: geminiApiKey,
@@ -138,18 +157,17 @@ function App() {
     reasoningEnabled
   });
 
-  // Handle recording complete - start transcription
+  // Handle recording complete
   const handleRecordingComplete = useCallback((audioSamples) => {
     console.log('Recording complete, starting transcription...', audioSamples.length, 'samples');
     clearTranscript();
     transcribe(audioSamples, language);
   }, [transcribe, clearTranscript, language]);
 
-  // Hey Buddy hook - must be called before effects that use pause/resume
+  // Hey Buddy hook
   const {
     isInitialized,
     isRecording,
-    isSpeaking,
     speechProbability,
     wakeWords,
     recording,
@@ -162,68 +180,64 @@ function App() {
     requestMicrophonePermission,
   } = useHeyBuddy(heyBuddyOptions, handleRecordingComplete);
 
-  // Pause listening when transcription or generation starts
+  // Pause listening logic
   useEffect(() => {
-    if (isTranscribing || isGenerating) {
-      console.log('Pausing wake word detection during processing');
+    if (isTranscribing || isGenerating || isSpeaking) {
       pause();
     }
-  }, [isTranscribing, isGenerating, pause]);
+  }, [isTranscribing, isGenerating, isSpeaking, pause]);
 
   const processedTextRef = useRef('');
 
-  // When transcription completes, send message to LLM
+  // Transcription -> LLM
   useEffect(() => {
     if (transcript?.text && !transcript.isBusy && !isGenerating) {
-      // Prevent duplicate sends for the exact same text
       if (processedTextRef.current === transcript.text) return;
 
       console.log('Transcription complete, sending to LLM:', transcript.text);
       processedTextRef.current = transcript.text;
       sendMessage(transcript.text);
-      // Clear transcript to prevent re-sending it in a loop (and allow new identical text later if needed)
-      // Note: We might need to reset processedTextRef if we want to allow saying "Hello" twice in a row.
-      // But clearing transcript usually suffices.
       clearTranscript();
     }
   }, [transcript, isGenerating, sendMessage, clearTranscript]);
 
-  // Reset processed text when transcript is cleared (optional, but good for safety)
   useEffect(() => {
     if (!transcript?.text) {
       processedTextRef.current = '';
     }
   }, [transcript]);
 
-  // Resume listening when LLM response is complete
-  // Resume listening completely when LLM response is complete
+  // Speak Logic
   useEffect(() => {
     if (!isGenerating && lastResponse && lastResponse.length > 0) {
-      // Trigger TTS if enabled
       if (ttsEnabled) {
-        // Speak the final response (or just the content part if we separated it? useLLM gives raw lastResponse which might include thoughts?)
-        // useLLM lastResponse usually only includes content if parsed correctly, but let's check.
-        // In useLLM.js: lastResponse = messages.filter...at(-1)?.content
-        // Content is separate from thought. So it's safe.
         speak(lastResponse);
       }
 
-      // Check if we just finished (not starting a new one)
-      const lastUserMsg = chatMessages.filter(m => m.role === 'user').at(-1);
-      const lastAssistantMsg = chatMessages.filter(m => m.role === 'assistant').at(-1);
-      if (lastAssistantMsg && lastAssistantMsg.content.length > 0) {
-        console.log('LLM response complete, resuming listening');
+      // Resume listening logic
+      // If TTS is disabled, resume immediately
+      if (!ttsEnabled) {
         resume();
       }
+      // If TTS enabled, the 'isSpeaking' effect above will handle pause/resume flow 
+      // (Pauses when speaking starts. We need resume when speaking ends.)
     }
-  }, [isGenerating, lastResponse, chatMessages, resume, ttsEnabled, speak]);
+  }, [isGenerating, lastResponse, ttsEnabled, speak, resume]);
+
+  // Resume when completely idle
+  useEffect(() => {
+    if (!isSpeaking && !isGenerating && !isTranscribing && !isRecording && isInitialized) {
+      resume();
+    }
+  }, [isSpeaking, isGenerating, isTranscribing, isRecording, isInitialized, resume]);
+
 
   // Canvas refs
   const wakeWordCanvasRef = useRef(null);
   const speechCanvasRef = useRef(null);
   const frameBudgetCanvasRef = useRef(null);
 
-  // Visualization hooks
+  // Visualization Hooks
   const wakeWordColors = useMemo(() => {
     const colors = {};
     for (const word of WAKE_WORDS) {
@@ -247,7 +261,6 @@ function App() {
     { color: COLORS["frame budget"], normalize: true, normalizeMax: 120 }
   );
 
-  // Handle permission request
   const handleAllowMicrophone = useCallback(async () => {
     const granted = await requestMicrophonePermission();
     if (granted) {
@@ -256,7 +269,6 @@ function App() {
     }
   }, [requestMicrophonePermission, start]);
 
-  // Build active states for wake word visualization
   const activeStates = useMemo(() => {
     const states = {};
     for (const word of WAKE_WORDS) {
@@ -266,18 +278,15 @@ function App() {
     return states;
   }, [wakeWords]);
 
-  // Update visualizations when data changes
   useEffect(() => {
     if (!isInitialized) return;
 
-    // Push wake word values
     for (const word of WAKE_WORDS) {
       const key = word.replace(' ', '-');
       const probability = wakeWords[key]?.probability || 0;
       pushWakeWordValue(word, probability);
     }
 
-    // Push speech and frame budget
     pushSpeechValue(speechProbability);
     pushFrameBudgetValue(frameTimeEma);
   }, [
@@ -290,7 +299,6 @@ function App() {
     pushFrameBudgetValue,
   ]);
 
-  // Animation loop
   useEffect(() => {
     let animationId;
 
@@ -310,7 +318,6 @@ function App() {
     };
   }, [drawWakeWords, drawSpeech, drawFrameBudget, activeStates, isSpeaking]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stop();
@@ -324,6 +331,35 @@ function App() {
     numTokens,
     complete: !isGenerating,
   } : null;
+
+  // Status for Chat Bubble (Merged)
+  const statusBubbleProps = useMemo(() => {
+    if (isLLMLoading || (isGenerating && !lastResponse)) {
+      return { status: 'loading_llm' };
+    }
+    if (isTranscribing) {
+      return { status: 'transcribing', transcript: transcript?.text };
+    }
+    if (isRecording) {
+      return { status: 'recording' };
+    }
+    // Check for thinking state? 
+    // The message component specific logic handles thinking display
+    // But if we want a global status:
+    if (isGenerating && lastResponse) {
+      return { status: 'response' };
+    }
+    if (isSpeaking) {
+      return { status: 'play_audio' };
+    }
+    // Wake word detected?
+    const isWakeWordActive = Object.values(activeStates).some(s => s);
+    if (isWakeWordActive) {
+      return { status: 'wake_word_detected' };
+    }
+    return { status: 'idle' };
+  }, [isLLMLoading, isGenerating, isTranscribing, transcript, isRecording, lastResponse, isSpeaking, activeStates]);
+
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-black text-white p-4">
@@ -351,6 +387,7 @@ function App() {
         llmLoadingStatus={llmLoadingStatus}
         chatMessages={chatMessages}
         sendMessage={sendMessage}
+        statusBubbleProps={statusBubbleProps}
 
         // Settings Props
         reasoningEnabled={reasoningEnabled}
@@ -361,6 +398,8 @@ function App() {
         setLanguage={setLanguage}
         ttsEnabled={ttsEnabled}
         setTtsEnabled={setTtsEnabled}
+        ttsProvider={ttsProvider}
+        setTtsProvider={setTtsProvider}
 
         // Gemini / Provider Props
         llmProvider={llmProvider}
