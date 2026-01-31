@@ -114,6 +114,15 @@ export function ChatStatusBubble({ status, transcript, audioUrl }) {
                     </div>
                 </div>
             );
+        case 'loading_tts_models':
+            return (
+                <div className={containerClass}>
+                    <div className={bubbleClass}>
+                        <PixelLoader />
+                        <span className="text-[10px] block mt-1 text-zinc-500">Initializing Voice Engine...</span>
+                    </div>
+                </div>
+            );
         case 'transcribing':
             return (
                 <div className={containerClass}>

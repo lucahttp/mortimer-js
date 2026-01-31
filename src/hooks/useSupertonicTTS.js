@@ -1,135 +1,117 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { SupertonicTTS } from '../services/SupertonicTTS';
 
 /**
- * Hook to manage Supertonic On-Device TTS
- * Loads models and generates speech via Web Worker
+ * React hook for Supertonic TTS
+ * Uses the same ONNX pattern as HeyBuddy - global window.ort from CDN
  */
-export function useSupertonicTTS({ enabled = true, language = 'en' } = {}) {
-    const workerRef = useRef(null);
-    const audioCtxRef = useRef(null);
-    const [isLoaded, setIsLoaded] = useState(false);
+export function useSupertonicTTS(enabled = true) {
     const [isLoading, setIsLoading] = useState(false);
-    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false);
     const [error, setError] = useState(null);
-    const [progress, setProgress] = useState(0);
+    const [progress, setProgress] = useState(null);
+
+    const ttsRef = useRef(null);
+    const audioCtxRef = useRef(null);
 
     useEffect(() => {
         if (!enabled) return;
 
-        // Initialize Audio Context (must be resumed on user interaction usually)
+        // Initialize Audio Context
         if (!audioCtxRef.current) {
             audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
         }
 
-        // Initialize Worker
-        if (!workerRef.current) {
+        // Initialize TTS engine
+        if (!ttsRef.current) {
+            console.log("[useSupertonicTTS] Creating SupertonicTTS instance...");
+
+            ttsRef.current = new SupertonicTTS({
+                debug: true,
+                basePath: '/supertonic',
+            });
+
+            // Set up callbacks
+            ttsRef.current.onProgress(({ message, percent }) => {
+                console.log(`[useSupertonicTTS] Progress: ${message} (${percent}%)`);
+                setProgress({ message, percent });
+            });
+
+            ttsRef.current.onReady(() => {
+                console.log("[useSupertonicTTS] TTS Ready!");
+                setIsLoading(false);
+                setIsLoaded(true);
+                setError(null);
+            });
+
+            ttsRef.current.onError((err) => {
+                console.error("[useSupertonicTTS] TTS Error:", err);
+                setError(err);
+                setIsLoading(false);
+            });
+
+            // Start initialization
             setIsLoading(true);
-            workerRef.current = new Worker(
-                new URL('../workers/supertonic.worker.js', import.meta.url),
-                { type: 'module' }
-            );
-
-            workerRef.current.onmessage = (e) => {
-                const { type, data, error: errMsg } = e.data;
-
-                if (type === 'loaded') {
-                    setIsLoaded(true);
-                    setIsLoading(false);
-                    console.log("[Supertonic] Models Loaded");
-                }
-                else if (type === 'success') {
-                    playAudio(data.audio, data.sampleRate);
-                }
-                else if (type === 'error') {
-                    console.error("[Supertonic] Worker Error:", errMsg);
-                    setError(errMsg);
-                    setIsSpeaking(false);
-                }
-            };
-
-            // Trigger load
-            workerRef.current.postMessage({ type: 'load' });
+            ttsRef.current.initialize().catch((err) => {
+                console.error("[useSupertonicTTS] Initialize failed:", err);
+                setError(err.message);
+                setIsLoading(false);
+            });
         }
 
         return () => {
-            if (workerRef.current) {
-                workerRef.current.terminate();
-                workerRef.current = null;
-            }
-            if (audioCtxRef.current) {
-                audioCtxRef.current.close();
-                audioCtxRef.current = null;
+            // Cleanup
+            if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+                // Don't close immediately, might be used by other components
             }
         };
     }, [enabled]);
 
-    const playAudio = async (float32Array, sampleRate) => {
-        if (!audioCtxRef.current) return;
-
-        try {
-            if (audioCtxRef.current.state === 'suspended') {
-                await audioCtxRef.current.resume();
-            }
-
-            const buffer = audioCtxRef.current.createBuffer(1, float32Array.length, sampleRate);
-            buffer.getChannelData(0).set(float32Array);
-
-            const source = audioCtxRef.current.createBufferSource();
-            source.buffer = buffer;
-            source.connect(audioCtxRef.current.destination);
-
-            source.onended = () => {
-                setIsSpeaking(false);
-            };
-
-            source.start(0);
-            setIsSpeaking(true);
-        } catch (e) {
-            console.error("[Supertonic] Playback Error:", e);
-            setError(e.message);
-            setIsSpeaking(false);
-        }
-    };
-
-    const speak = useCallback((text, voiceId = 'M3') => {
-        if (!enabled || !workerRef.current || !isLoaded) {
-            console.warn("[Supertonic] TTS not ready or disabled");
+    const speak = useCallback(async (text) => {
+        if (!ttsRef.current) {
+            console.warn("[useSupertonicTTS] TTS not initialized");
             return;
         }
 
-        // Clean text (remove <think> tags if any passed, though usually handled upstream)
-        const cleanText = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-
-        if (!cleanText) return;
-
-        setIsSpeaking(true);
-        workerRef.current.postMessage({
-            type: 'generate',
-            data: { text: cleanText, voiceId }
-        });
-    }, [enabled, isLoaded]);
-
-    const stop = useCallback(() => {
-        if (workerRef.current) {
-            // Worker doesn't support 'stop' natively yet, but we can stop playback
-            if (audioCtxRef.current) {
-                audioCtxRef.current.suspend();
-                setIsSpeaking(false);
-                // Reset context?
-                audioCtxRef.current.close().then(() => {
-                    audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                });
-            }
+        if (!isLoaded) {
+            console.warn("[useSupertonicTTS] TTS not ready");
+            return;
         }
-    }, []);
+
+        try {
+            console.log("[useSupertonicTTS] Generating speech...");
+            const { audio, sampleRate } = await ttsRef.current.generate(text);
+
+            // Play audio
+            if (audioCtxRef.current && audio && audio.length > 0) {
+                // Resume audio context if suspended
+                if (audioCtxRef.current.state === 'suspended') {
+                    await audioCtxRef.current.resume();
+                }
+
+                const audioBuffer = audioCtxRef.current.createBuffer(1, audio.length, sampleRate);
+                audioBuffer.getChannelData(0).set(audio);
+
+                const source = audioCtxRef.current.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioCtxRef.current.destination);
+                source.start();
+
+                console.log("[useSupertonicTTS] Playing audio...");
+            }
+        } catch (err) {
+            console.error("[useSupertonicTTS] Speak error:", err);
+            setError(err.message);
+        }
+    }, [isLoaded]);
 
     return {
         speak,
-        stop,
-        isLoaded,
         isLoading,
-        isSpeaking,
-        error
+        isLoaded,
+        error,
+        progress,
     };
 }
+
+export default useSupertonicTTS;

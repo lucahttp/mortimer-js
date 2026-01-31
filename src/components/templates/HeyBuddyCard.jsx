@@ -112,7 +112,7 @@ function HeyBuddyCard({
                         <div className="text-yellow-500">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7L40.12,130.83a8,8,0,0,0,5,13.65l57.6,11.61L88.06,229.43a8,8,0,0,0,13.69,7l114-120.26A8,8,0,0,0,215.79,118.17Z"></path></svg>
                         </div>
-                        <h2 className="text-xs font-bold tracking-widest uppercase">Morti (Mortimer) Yout offline assistant</h2>
+                        <h2 className="text-xs font-bold tracking-widest uppercase">Morti (Mortimer) - Your offline assistant</h2>
                     </div>
                     <div className="flex items-center gap-6 text-[10px] uppercase">
                         <div className="flex gap-4 text-zinc-500 hidden sm:flex">

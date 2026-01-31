@@ -3,6 +3,32 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { MathJaxContext, MathJax } from "better-react-mathjax";
 import { ChatStatusBubble } from "./ChatStatusBubble";
+import { WAKE_WORDS, COLORS } from "../../App";
+
+const WakeWordCarousel = () => {
+    const [index, setIndex] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setIndex((prev) => (prev + 1) % WAKE_WORDS.length);
+        }, 3000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const currentWord = WAKE_WORDS[index];
+    // Convert [r, g, b] to rgb string
+    const color = COLORS[currentWord] ? `rgb(${COLORS[currentWord].join(',')})` : 'rgb(113, 113, 122)'; // default zinc-500
+
+    return (
+        <span
+            key={currentWord}
+            className="inline-block min-w-[70px] text-left animate-in slide-in-from-left-2 fade-in duration-500 ease-out"
+            style={{ color, textShadow: `0 0 20px ${color}` }}
+        >
+            {currentWord}
+        </span>
+    );
+};
 
 function render(text) {
     if (!text) return "";
@@ -111,6 +137,7 @@ function Message({ role, content, thought }) {
 
 export default function Chat({ messages, statusBubbleProps }) {
     // statusBubbleProps = { status, transcript, audioUrl }
+    const WAKE_WORDS = ["buddy", "hey buddy", "hi buddy", "sup buddy", "yo buddy", "okay buddy", "hello buddy"];
 
     const emptymessages = messages.length === 0;
     // Don't show empty state if we have a status bubble active (e.g. recording)
@@ -124,7 +151,10 @@ export default function Chat({ messages, statusBubbleProps }) {
                         <div className="text-yellow-500 mb-4 opacity-50">
                             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 256 256"><path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7L40.12,130.83a8,8,0,0,0,5,13.65l57.6,11.61L88.06,229.43a8,8,0,0,0,13.69,7l114-120.26A8,8,0,0,0,215.79,118.17Z"></path></svg>
                         </div>
-                        <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest">System Ready. Awaiting Input.</p>
+                        <p className="text-zinc-500 font-mono text-xs uppercase tracking-widest text-center">
+                            System Ready. Awaiting Input.<br />
+                            Say <WakeWordCarousel /> to start
+                        </p>
                     </div>
                 ) : (
                     <div className="space-y-10 pb-4">

@@ -13,8 +13,8 @@ import './App.css';
 
 // Configuration
 const ROOT_URL = "https://huggingface.co/benjamin-paine/hey-buddy/resolve/main";
-const WAKE_WORDS = ["buddy", "hey buddy", "hi buddy", "sup buddy", "yo buddy", "okay buddy", "hello buddy"];
-const COLORS = {
+export const WAKE_WORDS = ["buddy", "hey buddy", "hi buddy", "sup buddy", "yo buddy", "okay buddy", "hello buddy"];
+export const COLORS = {
   "buddy": [0, 119, 187],
   "hey buddy": [0, 153, 136],
   "hi buddy": [51, 227, 138],
@@ -103,7 +103,9 @@ function App() {
   const {
     speak: supertonicSpeak,
     stop: stopSupertonic,
-    isSpeaking: isSupertonicSpeaking
+    isSpeaking: isSupertonicSpeaking,
+    isLoaded: isSupertonicLoaded,
+    error: supertonicError
   } = useSupertonicTTS({
     enabled: ttsEnabled && ttsProvider === 'supertonic',
     language: language
@@ -343,7 +345,11 @@ function App() {
     if (isRecording) {
       return { status: 'recording' };
     }
-    // Check for thinking state? 
+    // Check for TTS loading
+    if (ttsEnabled && ttsProvider === 'supertonic' && !isSupertonicLoaded && !supertonicError) {
+      return { status: 'loading_tts_models' };
+    }
+    // Check for thinking state?  
     // The message component specific logic handles thinking display
     // But if we want a global status:
     if (isGenerating && lastResponse) {
