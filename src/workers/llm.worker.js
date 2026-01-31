@@ -1,6 +1,7 @@
 /**
  * LLM Web Worker using Qwen3 WebGPU
  * Based on transformers.js qwen3-webgpu example
+ * Supports chat history and streaming responses
  */
 import {
     AutoTokenizer,
@@ -18,38 +19,30 @@ class TextGenerationPipeline {
     static model = null;
 
     static async getInstance(progressCallback = null) {
-        if (!this.tokenizer) {
-            this.tokenizer = AutoTokenizer.from_pretrained(this.model_id, {
-                progress_callback: progressCallback,
-            });
-        }
+        this.tokenizer ??= AutoTokenizer.from_pretrained(this.model_id, {
+            progress_callback: progressCallback,
+        });
 
-        if (!this.model) {
-            this.model = AutoModelForCausalLM.from_pretrained(this.model_id, {
-                dtype: "q4f16",
-                device: "webgpu",
-                progress_callback: progressCallback,
-            });
-        }
+        this.model ??= AutoModelForCausalLM.from_pretrained(this.model_id, {
+            dtype: "q4f16",
+            device: "webgpu",
+            progress_callback: progressCallback,
+        });
 
         return Promise.all([this.tokenizer, this.model]);
     }
 }
 
 const stoppingCriteria = new InterruptableStoppingCriteria();
+let pastKeyValuesCache = null;
 
 /**
- * Generate response for a given prompt
+ * Generate response for chat messages
  */
-async function generate({ prompt }) {
+async function generate({ messages }) {
     const [tokenizer, model] = await TextGenerationPipeline.getInstance();
 
-    // Create chat messages
-    const messages = [
-        { role: "system", content: "You are a helpful voice assistant. Keep responses concise and conversational." },
-        { role: "user", content: prompt },
-    ];
-
+    // Apply chat template to messages
     const inputs = tokenizer.apply_chat_template(messages, {
         add_generation_prompt: true,
         return_dict: true,
@@ -60,7 +53,7 @@ async function generate({ prompt }) {
     let tps = 0;
 
     const tokenCallback = () => {
-        startTime = startTime ?? performance.now();
+        startTime ??= performance.now();
         if (numTokens++ > 0) {
             tps = (numTokens / (performance.now() - startTime)) * 1000;
         }
@@ -86,16 +79,20 @@ async function generate({ prompt }) {
     self.postMessage({ status: "start" });
 
     try {
-        const { sequences } = await model.generate({
+        const { past_key_values, sequences } = await model.generate({
             ...inputs,
+            past_key_values: pastKeyValuesCache,
             do_sample: true,
             top_k: 20,
             temperature: 0.7,
-            max_new_tokens: 256,
+            max_new_tokens: 1024,
             streamer,
             stopping_criteria: stoppingCriteria,
             return_dict_in_generate: true,
         });
+
+        // Cache for next turn
+        pastKeyValuesCache = past_key_values;
 
         const decoded = tokenizer.batch_decode(sequences, {
             skip_special_tokens: true,
@@ -112,6 +109,23 @@ async function generate({ prompt }) {
         self.postMessage({
             status: "error",
             data: { message: error.message },
+        });
+    }
+}
+
+/**
+ * Check WebGPU support
+ */
+async function check() {
+    try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+            throw new Error("WebGPU is not supported (no adapter found)");
+        }
+    } catch (e) {
+        self.postMessage({
+            status: "error",
+            data: { message: e.toString() },
         });
     }
 }
@@ -146,6 +160,10 @@ self.addEventListener("message", async (e) => {
     const { type, data } = e.data;
 
     switch (type) {
+        case "check":
+            check();
+            break;
+
         case "load":
             load();
             break;
@@ -157,6 +175,11 @@ self.addEventListener("message", async (e) => {
 
         case "interrupt":
             stoppingCriteria.interrupt();
+            break;
+
+        case "reset":
+            pastKeyValuesCache = null;
+            stoppingCriteria.reset();
             break;
     }
 });

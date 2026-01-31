@@ -43,24 +43,26 @@ function App() {
     clear: clearTranscript,
   } = useTranscriber();
 
-  // LLM hook
+  // LLM hook - now with chat support
   const {
-    response: llmResponse,
+    messages: chatMessages,
+    lastResponse,
     isGenerating,
     isModelLoading: isLLMLoading,
     progress: llmProgress,
     loadingStatus: llmLoadingStatus,
-    generate,
-    clear: clearLLM,
+    tps,
+    numTokens,
+    sendMessage,
+    reset: resetChat,
   } = useLLM();
 
   // Handle recording complete - start transcription
   const handleRecordingComplete = useCallback((audioSamples) => {
     console.log('Recording complete, starting transcription...', audioSamples.length, 'samples');
     clearTranscript();
-    clearLLM();
     transcribe(audioSamples);
-  }, [transcribe, clearTranscript, clearLLM]);
+  }, [transcribe, clearTranscript]);
 
   // Hey Buddy hook - must be called before effects that use pause/resume
   const {
@@ -87,21 +89,28 @@ function App() {
     }
   }, [isTranscribing, isGenerating, pause]);
 
-  // When transcription completes, generate LLM response
+  // When transcription completes, send message to LLM
   useEffect(() => {
     if (transcript?.text && !transcript.isBusy && !isGenerating) {
-      console.log('Transcription complete, generating response for:', transcript.text);
-      generate(transcript.text);
+      console.log('Transcription complete, sending to LLM:', transcript.text);
+      sendMessage(transcript.text);
+      // Clear transcript to prevent re-sending it in a loop
+      clearTranscript();
     }
-  }, [transcript, isGenerating, generate]);
+  }, [transcript, isGenerating, sendMessage, clearTranscript]);
 
   // Resume listening when LLM response is complete
   useEffect(() => {
-    if (llmResponse?.complete) {
-      console.log('LLM response complete, resuming listening');
-      resume();
+    if (!isGenerating && lastResponse && lastResponse.length > 0) {
+      // Check if we just finished (not starting a new one)
+      const lastUserMsg = chatMessages.filter(m => m.role === 'user').at(-1);
+      const lastAssistantMsg = chatMessages.filter(m => m.role === 'assistant').at(-1);
+      if (lastAssistantMsg && lastAssistantMsg.content.length > 0) {
+        console.log('LLM response complete, resuming listening');
+        resume();
+      }
     }
-  }, [llmResponse?.complete, resume]);
+  }, [isGenerating, lastResponse, chatMessages, resume]);
 
   // Canvas refs
   const wakeWordCanvasRef = useRef(null);
@@ -202,6 +211,14 @@ function App() {
     };
   }, [stop]);
 
+  // Build LLM response object for UI
+  const llmResponse = lastResponse ? {
+    text: lastResponse,
+    tps,
+    numTokens,
+    complete: !isGenerating,
+  } : null;
+
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0b0f19] text-white p-4">
       <PermissionPrompt
@@ -226,6 +243,7 @@ function App() {
         llmResponse={llmResponse}
         llmProgress={llmProgress}
         llmLoadingStatus={llmLoadingStatus}
+        chatMessages={chatMessages}
       />
     </div>
   );

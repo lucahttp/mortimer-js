@@ -1,6 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { GraphContainer } from '@/components/organisms/GraphContainer';
 import { RecordingDisplay } from '@/components/organisms/RecordingDisplay';
+import Chat from '@/components/chat/Chat';
 import logo from '@/assets/logo.png';
 
 /**
@@ -23,6 +24,7 @@ function HeyBuddyCard({
     llmResponse,
     llmProgress,
     llmLoadingStatus,
+    chatMessages = [],
 }) {
     return (
         <Card className="max-w-[640px] mx-auto p-4 border-gray-600 rounded-2xl bg-[#101623] text-white">
@@ -80,6 +82,15 @@ function HeyBuddyCard({
                     llmProgress={llmProgress}
                     llmLoadingStatus={llmLoadingStatus}
                 />
+
+                {/* Chat History Section */}
+                {chatMessages.length > 0 && (
+                    <section className="mt-4">
+                        <div className="bg-[#0b0f19] rounded-lg p-2">
+                            <Chat messages={chatMessages} />
+                        </div>
+                    </section>
+                )}
             </CardContent>
         </Card>
     );
